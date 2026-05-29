@@ -64,10 +64,10 @@ const getFixtureResultHandler = asyncHandler(async (req, res) => {
  * Used by CreateListingScreen to auto-populate odds when a selection is made.
  */
 const getFixtureOddsHandler = asyncHandler(async (req, res) => {
-  const { fixtureId, kickoff, homeTeam, awayTeam } = req.query;
+  const { fixtureId, kickoff, homeTeam, awayTeam, league } = req.query;
   if (!fixtureId) throw new ApiError(400, 'fixtureId is required');
 
-  const odds = await getFixtureOdds(fixtureId, kickoff || '', homeTeam || '', awayTeam || '');
+  const odds = await getFixtureOdds(fixtureId, kickoff || '', homeTeam || '', awayTeam || '', league || '');
   return ApiResponse.success(res, odds, 'Odds retrieved');
 });
 

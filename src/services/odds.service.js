@@ -315,28 +315,34 @@ const fetchAsOdds = async (numericId) => {
 
 // ── Public: get odds for a specific fixture ────────────────────────────────────
 
+const { getOddsForMatch } = require('./theOddsApi.service');
+
 /**
  * @param {string} fixtureId  — 'as_592872', 'fd_375648', or bare numeric string
- * @param {string} kickoff    — ISO date string (needed for fd_ cross-reference)
- * @param {string} homeTeam   — home team name (needed for fd_ cross-reference)
+ * @param {string} kickoff    — ISO date string
+ * @param {string} homeTeam   — home team name
  * @param {string} awayTeam   — away team name
+ * @param {string} leagueName — league name (used to select the-odds-api sport slug)
  */
-const getFixtureOdds = async (fixtureId, kickoff, homeTeam, awayTeam) => {
-  const id = String(fixtureId ?? '');
-  let numericId;
+const getFixtureOdds = async (fixtureId, kickoff, homeTeam, awayTeam, leagueName = '') => {
+  if (!homeTeam || !awayTeam || !kickoff) return { found: false };
 
+  // Primary: the-odds-api.com (free tier, designed specifically for odds)
+  const primary = await getOddsForMatch(homeTeam, awayTeam, kickoff, leagueName);
+  if (primary?.found) return primary;
+
+  // Fallback: api-sports.io (requires paid plan for bookmaker odds)
+  const id = String(fixtureId ?? '');
+  if (!id) return { found: false };
+
+  let numericId;
   if (id.startsWith('as_'))      numericId = id.slice(3);
   else if (id.startsWith('fd_')) {
     const asId = await findAsFixtureId(kickoff, homeTeam, awayTeam);
-    if (!asId) {
-      logger.info(`odds: no api-sports match for fd fixture ${id}`);
-      return { found: false };
-    }
+    if (!asId) return { found: false };
     numericId = String(asId);
-  } else if (id) {
-    numericId = id;
   } else {
-    return { found: false };
+    numericId = id;
   }
 
   return (await fetchAsOdds(numericId)) ?? { found: false };
