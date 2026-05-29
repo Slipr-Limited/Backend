@@ -653,4 +653,4 @@ const resolveSelection = (selection, result, stats = null) => {
   }
 };
 
-module.exports = { searchFixtures, searchFixturesRange, getFixtureResult, getMatchStatistics, resolveSelection };
+module.exports = { searchFixtures, searchFixturesRange, getFixtureResult, getMatchStatistics, resolveSelection, normalizeTeam };

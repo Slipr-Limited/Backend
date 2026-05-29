@@ -31,17 +31,14 @@ const cacheSet = async (key, data, ttl) => {
 };
 
 // ── Team name normalisation ───────────────────────────────────────────────────
+// Reuse the same normalizeTeam (with TEAM_ALIASES) used for fixture dedup so
+// abbreviations like PSG → parissaintgermain are resolved consistently.
 
-const normalise = (name = '') =>
-  name
-    .toLowerCase()
-    .replace(/\b(fc|cf|sc|afc|united|city|town|rovers|wanderers|athletic|atletico|club|de|the)\b/g, '')
-    .replace(/[^a-z0-9]/g, '')
-    .trim();
+const { normalizeTeam } = require('./apiFootball.service');
 
 const teamsMatch = (a, b) => {
-  const na = normalise(a);
-  const nb = normalise(b);
+  const na = normalizeTeam(a);
+  const nb = normalizeTeam(b);
   if (!na || !nb) return false;
   return na === nb || na.includes(nb) || nb.includes(na);
 };
