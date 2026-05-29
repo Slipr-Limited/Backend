@@ -80,6 +80,15 @@ if (process.env.NODE_ENV === 'development') {
 // ── Global rate limiter ─────────────────────────────────────────────────────
 app.use(globalLimiter);
 
+// ── Root ────────────────────────────────────────────────────────────────────
+app.get('/', (_req, res) => {
+  res.status(200).json({
+    message: 'Welcome to Slipr Backend API',
+    version: '1.0.0',
+    status:  'running',
+  });
+});
+
 // ── Health check ────────────────────────────────────────────────────────────
 app.get('/health', (_req, res) => {
   res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
