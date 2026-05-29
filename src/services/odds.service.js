@@ -312,31 +312,48 @@ const fetchAsOdds = async (numericId) => {
 
 // ── Public: get odds for a specific fixture ────────────────────────────────────
 
+const { getOddsForMatch } = require('./theOddsApi.service');
+
 /**
+ * Strategy:
+ *   1. Try api-sports.io /odds (works if on paid plan, free for as_ fixtures)
+ *   2. Fall back to the-odds-api.com (free 500 req/month, matches by team name)
+ *
  * @param {string} fixtureId  — 'as_592872', 'fd_375648', or bare numeric string
- * @param {string} kickoff    — ISO date string (needed for fd_ cross-reference)
- * @param {string} homeTeam   — home team name (needed for fd_ cross-reference)
+ * @param {string} kickoff    — ISO date string
+ * @param {string} homeTeam   — home team name
  * @param {string} awayTeam   — away team name
+ * @param {string} leagueName — league name (used by the-odds-api fallback)
  */
-const getFixtureOdds = async (fixtureId, kickoff, homeTeam, awayTeam) => {
+const getFixtureOdds = async (fixtureId, kickoff, homeTeam, awayTeam, leagueName = '') => {
   const id = String(fixtureId ?? '');
   let numericId;
 
   if (id.startsWith('as_'))      numericId = id.slice(3);
   else if (id.startsWith('fd_')) {
     const asId = await findAsFixtureId(kickoff, homeTeam, awayTeam);
-    if (!asId) {
-      logger.info(`odds: no api-sports match for fd fixture ${id}`);
-      return { found: false };
+    if (asId) {
+      numericId = String(asId);
+    } else {
+      logger.info(`odds: no api-sports match for fd fixture ${id} — trying fallback`);
     }
-    numericId = String(asId);
   } else if (id) {
     numericId = id;
-  } else {
-    return { found: false };
   }
 
-  return (await fetchAsOdds(numericId)) ?? { found: false };
+  // Try api-sports.io first (requires paid plan for bookmaker odds)
+  if (numericId) {
+    const asOdds = await fetchAsOdds(numericId);
+    if (asOdds?.found) return asOdds;
+  }
+
+  // Fallback: the-odds-api.com (free tier, matches by team name + date)
+  if (homeTeam && awayTeam && kickoff) {
+    const fallback = await getOddsForMatch(homeTeam, awayTeam, kickoff, leagueName);
+    if (fallback?.found) return fallback;
+  }
+
+  return { found: false };
 };
 
 module.exports = { getFixtureOdds };
