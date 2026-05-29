@@ -5,8 +5,9 @@
  * For each tracked listing with unresolved matches whose kickoffTime has passed:
  *   1. Query API-Football for the fixture result
  *   2. Resolve the selection (won/lost/void)
- *   3. If ALL matches are resolved: determine listing outcome and settle all purchases
- *   4. Tracked listings: no dispute possible — result is from official API
+ *   3. Settle purchases as soon as any loss is detected (accumulator bust)
+ *   4. Continue resolving remaining matches for display even after a loss
+ *   5. allMatchesResolved = true only when every match has a final result
  */
 
 'use strict';
@@ -53,21 +54,19 @@ const processListing = async (listing, now) => {
   const fresh = await Listing.findById(listing._id);
   if (!fresh || fresh.allMatchesResolved) return;
 
-  let modified   = false;
-  let allResolved = true;
-  let listingWon  = true;
-  let earlyLoss   = false; // any confirmed loss busts the accumulator immediately
+  // Already settled (e.g. early loss on a previous run) — only resolving for display
+  const alreadySettled = fresh.status === 'won' || fresh.status === 'lost';
+
+  let modified    = false;
+  let allResolved = true; // flipped to false if any match is still pending
+  let hasLoss     = false;
 
   for (let i = 0; i < fresh.trackedMatches.length; i++) {
     const match = fresh.trackedMatches[i];
 
-    // Already resolved — if it lost, the slip is bust right now
+    // Already resolved — note any loss but keep going for remaining display results
     if (match.result !== 'pending') {
-      if (match.result === 'lost') {
-        listingWon = false;
-        earlyLoss  = true;
-        break; // no need to check remaining games
-      }
+      if (match.result === 'lost') hasLoss = true;
       continue;
     }
 
@@ -111,29 +110,20 @@ const processListing = async (listing, now) => {
 
     logger.info(`autoResolveTracked: fixture ${match.fixtureId} → ${outcome} (listing ${listing._id})`);
 
-    // Slip is an accumulator — one loss ends it immediately
-    if (outcome === 'lost') {
-      listingWon = false;
-      earlyLoss  = true;
-      break;
-    }
-  }
-
-  // Only do the pending-check scan when no early loss was found
-  if (!earlyLoss) {
-    for (const m of fresh.trackedMatches) {
-      if (m.result === 'pending') { allResolved = false; break; }
-    }
+    if (outcome === 'lost') hasLoss = true;
+    // No break — continue resolving remaining matches so users see full results
   }
 
   if (modified) fresh.markModified('trackedMatches');
 
-  const shouldSettle = earlyLoss || allResolved;
+  // allMatchesResolved = true only when every match has a final result (for display completeness)
+  if (allResolved) fresh.allMatchesResolved = true;
 
-  if (shouldSettle) {
-    fresh.allMatchesResolved = true;
-    fresh.status = listingWon ? 'won' : 'lost';
-  }
+  // Settle as soon as a loss is detected OR when all matches are resolved —
+  // but only once (alreadySettled guards against double-settling)
+  const listingWon    = !hasLoss;
+  const shouldSettle  = !alreadySettled && (hasLoss || allResolved);
+  if (shouldSettle) fresh.status = listingWon ? 'won' : 'lost';
 
   await fresh.save();
 

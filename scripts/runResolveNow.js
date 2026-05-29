@@ -18,16 +18,17 @@ const processListing = async (listing) => {
   const fresh = await Listing.findById(listing._id);
   if (!fresh || fresh.allMatchesResolved) return;
 
+  const alreadySettled = fresh.status === 'won' || fresh.status === 'lost';
+
   let modified    = false;
   let allResolved = true;
-  let listingWon  = true;
-  let earlyLoss   = false;
+  let hasLoss     = false;
 
   for (let i = 0; i < fresh.trackedMatches.length; i++) {
     const match = fresh.trackedMatches[i];
 
     if (match.result !== 'pending') {
-      if (match.result === 'lost') { listingWon = false; earlyLoss = true; break; }
+      if (match.result === 'lost') hasLoss = true;
       continue;
     }
 
@@ -55,22 +56,17 @@ const processListing = async (listing) => {
     modified = true;
     console.log(`  fixture ${match.fixtureId} → ${outcome}`);
 
-    if (outcome === 'lost') { listingWon = false; earlyLoss = true; break; }
-  }
-
-  if (!earlyLoss) {
-    for (const m of fresh.trackedMatches) {
-      if (m.result === 'pending') { allResolved = false; break; }
-    }
+    if (outcome === 'lost') hasLoss = true;
+    // No break — resolve all for display
   }
 
   if (modified) fresh.markModified('trackedMatches');
 
-  const shouldSettle = earlyLoss || allResolved;
-  if (shouldSettle) {
-    fresh.allMatchesResolved = true;
-    fresh.status = listingWon ? 'won' : 'lost';
-  }
+  if (allResolved) fresh.allMatchesResolved = true;
+
+  const listingWon   = !hasLoss;
+  const shouldSettle = !alreadySettled && (hasLoss || allResolved);
+  if (shouldSettle) fresh.status = listingWon ? 'won' : 'lost';
 
   await fresh.save();
 
