@@ -28,17 +28,27 @@ const logger = require('../utils/logger');
 const runAutoResolve = async () => {
   const now = new Date();
 
-  // Find tracked listings with at least one unresolved match whose kickoff has passed
-  const listings = await Listing.find({
+  // Normal: listings not yet fully resolved
+  const normal = await Listing.find({
     listingType:        'tracked',
     autoResolvable:     true,
     allMatchesResolved: false,
     'trackedMatches.kickoffTime': { $lte: now },
   }).lean();
 
+  // Migration: settled early by old code but still showing pending match results
+  const migration = await Listing.find({
+    listingType:        'tracked',
+    allMatchesResolved: true,
+    status:             { $in: ['won', 'lost'] },
+    'trackedMatches.result':      'pending',
+    'trackedMatches.kickoffTime': { $lte: now },
+  }).lean();
+
+  const listings = [...normal, ...migration];
   if (!listings.length) return;
 
-  logger.info(`autoResolveTracked: processing ${listings.length} listings`);
+  logger.info(`autoResolveTracked: processing ${listings.length} listings (${normal.length} normal, ${migration.length} migration)`);
 
   for (const listing of listings) {
     try {
@@ -52,7 +62,8 @@ const runAutoResolve = async () => {
 const processListing = async (listing, now) => {
   // Re-fetch to get latest match states (avoid stale lean data from bulk find)
   const fresh = await Listing.findById(listing._id);
-  if (!fresh || fresh.allMatchesResolved) return;
+  if (!fresh) return;
+  // Migration listings have allMatchesResolved: true but pending display results — allow them through
 
   // Already settled (e.g. early loss on a previous run) — only resolving for display
   const alreadySettled = fresh.status === 'won' || fresh.status === 'lost';

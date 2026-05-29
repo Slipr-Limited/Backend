@@ -1,5 +1,8 @@
 'use strict';
 
+// Local-only: bypass TLS cert validation (antivirus intercepts certs on this machine)
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+
 // Use Google DNS so the mongodb+srv SRV lookup works (local DNS can't resolve SRV)
 require('dns').setServers(['8.8.8.8', '8.8.4.4']);
 
@@ -16,7 +19,8 @@ const { recalculateAnalytics }            = require('../src/services/analytics.s
 const processListing = async (listing) => {
   const now   = new Date();
   const fresh = await Listing.findById(listing._id);
-  if (!fresh || fresh.allMatchesResolved) return;
+  if (!fresh) return;
+  // Allow processing of migration listings (allMatchesResolved: true but pending matches remain)
 
   const alreadySettled = fresh.status === 'won' || fresh.status === 'lost';
 
@@ -82,18 +86,30 @@ const processListing = async (listing) => {
 
 (async () => {
   console.log('Connecting to MongoDB...');
-  await mongoose.connect(process.env.MONGODB_URI, { serverSelectionTimeoutMS: 20000 });
+  await mongoose.connect(process.env.MONGODB_URI, { serverSelectionTimeoutMS: 20000, tlsInsecure: true });
   console.log('Connected.\n');
 
   const now = new Date();
-  const listings = await Listing.find({
+
+  // Pass 1 — normal: listings not yet fully resolved
+  const pending = await Listing.find({
     listingType:        'tracked',
     autoResolvable:     true,
     allMatchesResolved: false,
     'trackedMatches.kickoffTime': { $lte: now },
   }).lean();
 
-  console.log(`Found ${listings.length} listing(s) to process.\n`);
+  // Pass 2 — migration: listings already settled by old code but with display-pending matches
+  const stalePending = await Listing.find({
+    listingType:        'tracked',
+    allMatchesResolved: true,
+    status:             { $in: ['won', 'lost'] },
+    'trackedMatches.result':      'pending',
+    'trackedMatches.kickoffTime': { $lte: now },
+  }).lean();
+
+  const listings = [...pending, ...stalePending];
+  console.log(`Found ${listings.length} listing(s) to process (${pending.length} normal, ${stalePending.length} migration).\n`);
 
   for (const listing of listings) {
     console.log(`Processing listing ${listing._id}...`);
