@@ -100,7 +100,7 @@ router.put('/escrow/disputes/:id/escalate',    protect, requireEscrowAdmin, esca
 router.put('/escrow/disputes/:id/evidence',    protect, requireEscrowAdmin, requestEvidence);
 router.get('/escrow/outcomes',                 protect, requireEscrowAdmin, getPendingOutcomes);
 
-// ── Legacy routes kept for backwards compat (existing admin.controller.js) ───
+// ── Legacy + extended admin routes (admin.controller.js) ─────────────────────
 const {
   getUsers: getLegacyUsers,
   getUserById,
@@ -113,6 +113,17 @@ const {
   markDisputeUnderReview,
   getStats,
   getListings,
+  getListingById,
+  forceResolveListing,
+  deleteListing,
+  getBoosts,
+  cancelBoost,
+  getVerifiedSubscriptions,
+  cancelVerifiedSubscription,
+  setVerified,
+  getUserWallet,
+  getComments,
+  deleteComment,
 } = require('../controllers/admin.controller');
 
 router.get('/stats',                  protect, requireAdmin, getStats);
@@ -122,9 +133,28 @@ router.post('/users/:id/ban',         protect, requireAdmin, legacyBanUser);
 router.post('/users/:id/unban',       protect, requireAdmin, legacyUnbanUser);
 router.post('/users/:id/unflag',      protect, requireAdmin, unflagUser);
 router.post('/users/:id/kyc',         protect, requireAdmin, updateKYCStatus);
-router.get('/listings',               protect, requireAdmin, getListings);
+router.put('/users/:id/verify',       protect, requireAdmin, setVerified);
+router.get('/users/:id/wallet',       protect, requireAdmin, getUserWallet);
 router.get('/disputes',               protect, requireAdmin, getLegacyDisputes);
 router.post('/disputes/:id/review',   protect, requireAdmin, markDisputeUnderReview);
 router.post('/disputes/:id/resolve',  protect, requireAdmin, legacyResolveDispute);
+
+// Listings management
+router.get('/listings',               protect, requireAdmin, getListings);
+router.get('/listings/:id',           protect, requireAdmin, getListingById);
+router.put('/listings/:id/outcome',   protect, requireAdmin, forceResolveListing);
+router.delete('/listings/:id',        protect, requireAdmin, deleteListing);
+
+// Boost management
+router.get('/boosts',                 protect, requireAdmin, getBoosts);
+router.delete('/boosts/:listingId',   protect, requireAdmin, cancelBoost);
+
+// Verified subscription management
+router.get('/subscriptions',               protect, requireAdmin, getVerifiedSubscriptions);
+router.delete('/subscriptions/:userId',    protect, requireAdmin, cancelVerifiedSubscription);
+
+// Comment moderation (top-level, not support-scoped)
+router.get('/comments',               protect, requireAdmin, getComments);
+router.delete('/comments/:id',        protect, requireAdmin, deleteComment);
 
 module.exports = router;
