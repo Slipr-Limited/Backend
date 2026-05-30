@@ -108,9 +108,10 @@ const gracefulShutdown = async (signal) => {
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT',  () => gracefulShutdown('SIGINT'));
 
-process.on('unhandledRejection', (reason, promise) => {
-  logger.error('Unhandled Promise Rejection:', { reason, promise });
-  server.close(() => process.exit(1));
+process.on('unhandledRejection', (reason) => {
+  // Log but do NOT exit — BullMQ/ioredis emit transient rejections on Redis
+  // reconnects that are non-fatal. Only uncaughtException kills the process.
+  logger.error('Unhandled Promise Rejection (non-fatal):', reason);
 });
 
 process.on('uncaughtException', (err) => {

@@ -1,77 +1,51 @@
 /**
- * middleware/rateLimit.middleware.js — Redis-backed rate limiting.
+ * middleware/rateLimit.middleware.js — In-memory rate limiting.
  * Three tiers:
  *   - globalLimiter:   100 req / 15 min per IP (all routes)
- *   - authLimiter:     10  req / 15 min per IP (auth routes)
+ *   - authLimiter:     10  req / 15 min per IP (auth endpoints)
  *   - purchaseLimiter: 20  req / 15 min per authenticated user
+ *
+ * Uses express-rate-limit's built-in memory store — no Redis dependency.
+ * This avoids connection-timing issues at startup and is correct for a
+ * single-process Node server. Upgrade to a shared store if you add PM2
+ * cluster mode or multiple dynos.
  */
 
 'use strict';
 
 const rateLimit = require('express-rate-limit');
-const { RedisStore } = require('rate-limit-redis');
-const { getRedisClient } = require('../config/redis');
 const ApiResponse = require('../utils/ApiResponse');
 
 const handler = (_req, res) =>
   ApiResponse.error(res, 'Too many requests — please slow down and try again later.', 429);
 
-/**
- * Creates a rate limiter with lazy Redis store initialisation.
- * The store is only created on the first request — by which time server.js
- * has already called connectRedis(), so Redis is guaranteed to be ready.
- * Falls back to express-rate-limit's built-in memory store if Redis is unavailable.
- */
-const createLimiter = (windowMs, max, keyGenerator) => {
-  let limiter = null;
+const makeLimiter = (windowMs, max, keyGenerator) =>
+  rateLimit({
+    windowMs,
+    max,
+    standardHeaders: true,
+    legacyHeaders:   false,
+    keyGenerator,
+    handler,
+    skip: (req) => req.user?.isAdmin === true,
+  });
 
-  return (req, res, next) => {
-    if (!limiter) {
-      let store;
-      try {
-        const redis = getRedisClient();
-        store = new RedisStore({
-          sendCommand: (...args) => redis.call(...args),
-        });
-      } catch {
-        store = undefined;
-      }
-
-      limiter = rateLimit({
-        windowMs,
-        max,
-        store,
-        standardHeaders: true,
-        legacyHeaders: false,
-        keyGenerator,
-        handler,
-        skip: (req) => req.user?.isAdmin === true,
-      });
-    }
-
-    return limiter(req, res, next);
-  };
-};
-
-// 100 requests per 15 minutes per IP
-const globalLimiter = createLimiter(
+const globalLimiter = makeLimiter(
   15 * 60 * 1000,
   100,
-  (req) => req.ip
+  (req) => req.ip,
 );
 
-// 10 requests per 15 minutes per IP — for auth endpoints
-const authLimiter = createLimiter(
+const authLimiter = makeLimiter(
   15 * 60 * 1000,
   10,
-  (req) => `auth:${req.ip}`
+  (req) => `auth:${req.ip}`,
 );
 
-// 20 requests per 15 minutes per authenticated user
-const purchaseLimiter = createLimiter(
+const purchaseLimiter = makeLimiter(
   15 * 60 * 1000,
   20,
-  (req) => `purchase:${req.user?._id || req.ip}`
+  (req) => `purchase:${req.user?._id || req.ip}`,
 );
 
 module.exports = { globalLimiter, authLimiter, purchaseLimiter };

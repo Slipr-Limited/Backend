@@ -9,7 +9,7 @@
 const express = require('express');
 const router  = express.Router();
 
-const { protect }             = require('../middleware/auth.middleware');
+const { adminProtect: protect } = require('../middleware/auth.middleware');
 const { requireAdmin }        = require('../middleware/admin.middleware');
 const { authLimiter }         = require('../middleware/rateLimit.middleware');
 const { requireSuperAdmin }   = require('../middleware/superAdmin.middleware');

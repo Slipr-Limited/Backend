@@ -55,4 +55,36 @@ const optionalAuth = async (req, _res, next) => {
   next();
 };
 
-module.exports = { protect, optionalAuth };
+/**
+ * Admin-specific protect — verifies tokens signed with JWT_ADMIN_SECRET.
+ * Must be used on all /api/admin/* routes instead of protect.
+ */
+const adminProtect = asyncHandler(async (req, _res, next) => {
+  const authHeader = req.headers.authorization;
+
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    throw new ApiError(401, 'No authentication token provided');
+  }
+
+  const token = authHeader.split(' ')[1];
+
+  let decoded;
+  try {
+    decoded = jwt.verify(token, process.env.JWT_ADMIN_SECRET, { algorithms: ['HS256'] });
+  } catch (err) {
+    throw new ApiError(401, err.name === 'TokenExpiredError' ? 'Token expired' : 'Invalid token');
+  }
+
+  if (!decoded.isAdmin) throw new ApiError(401, 'Not an admin token');
+
+  const user = await User.findById(decoded.id).select('+refreshToken');
+
+  if (!user) throw new ApiError(401, 'Admin account no longer exists');
+  if (!user.isAdmin) throw new ApiError(403, 'Not an admin account');
+  if (user.isBanned) throw new ApiError(403, 'Admin account is deactivated');
+
+  req.user = user;
+  next();
+});
+
+module.exports = { protect, optionalAuth, adminProtect };
